@@ -127,6 +127,12 @@ Error message and password prompt
 
 <li>$:/SiteTitle</li>
 
+<li>$:/state/showeditpreview</li>
+
+<li>$:/state/tab/moresidebar-401116514</li>
+
+<li>$:/state/tab/sidebar--1835078512</li>
+
 <li>$:/StoryList</li>
 
 <li>$:/temp/info-plugin</li>
@@ -5868,6 +5874,15 @@ Error message and password prompt
 <div created="20150814154623444" modified="20150814154627899" title="$:/SiteTitle">
 <pre>Grant Lighting Project</pre>
 </div>
+<div modified="20150818234443114" title="$:/state/showeditpreview">
+<pre>yes</pre>
+</div>
+<div modified="20150819002322849" title="$:/state/tab/moresidebar-401116514">
+<pre>$:/core/ui/MoreSideBar/Orphans</pre>
+</div>
+<div modified="20150819002321250" title="$:/state/tab/sidebar--1835078512">
+<pre>$:/core/ui/SideBar/More</pre>
+</div>
 <div list="Overview" title="$:/StoryList">
 <pre></pre>
 </div>
@@ -5990,29 +6005,48 @@ Error message and password prompt
     }
 }</pre>
 </div>
-<div created="20150814154734195" modified="20150814155255980" tags="" title="Overview">
-<pre>Read the README.md
+<div created="20150814154734195" modified="20150819002636722" tags="" title="Overview">
+<pre>!!Art installation
 
-The overall concept is two 18&quot; x 24&quot; paintings on a bench and two benches on a wall (eight
-benches overall).
+The art installation comprises nine paintings on each of four walls. In front of the paintings on each wall are a pair of low benches, each with two 18&quot; x 24&quot; paintings lying flat. The paintings on the wall are inspired by Carl Jung's concept of &quot;the shadow&quot; and explore individual psyches. The paintings on the benches are geologically inspired and have many layers of glazes on partts. The painiting colors shift dramatically under different lighting conditions.
 
-Each painting is lighted by two groups of LED clusters, one at each end of the painting. The groups of clusters independently change color and intensity and show off the paintings in different light conditions. This was motivated by the way different room lighting affected these painting.
+!!Lighting project goal
 
-The LED clusters are BlinkM MaxMs. Each MaxM has a controller with 3 MOSFETs to drive the LEDs which are on a daughter board (&quot;Blaster&quot;). There is a red, a green, and a blue LED on the Blaster. The controller can change the intensity of each LED independently by running a script loaded into its memory.
+Light the painiings on each bench with varying colors and intensities powered by batteries so the benches can be free-standing. 
 
+!!Description
+The light colors and intenisties are controlled by scripts running on microprocessors. Each painting is lighted by two groups of LED clusters, one at each end of the painting. Each group of clusters has a light controller that runs its own script. A LED cluster consists of a red, green, and blue LED. The light controller can change the intensity of each color independently allowing a wide rangle of color. Each bench also has its own controller responsible for managing the light controllers and coordinating between the benchs.
+
+!!Hardware
+!!!MaxM
+The LED clusters are ~BlinkM MaxMs. Each MaxM is a pair of boards. One, the Master, has the controller and 3 MOSFETs to drive the LEDs. The LEDs themselves are on a daughter board (&quot;Blaster&quot;). There is a red, a green, and a blue LED on the Blaster. The controller can change the intensity of each LED independently by running a script loaded into its EEPROM.
+
+!!![[Jeenode]]
+
+An Arduino-derived low-power computer that is software-compatible with the Arduino IDE.
+
+!!Configuration
 In this configuration, each controller runs 4 Blasters which all change their LEDs in unison. For each painting, there are two controllers, one for each group of 4 Blasters with each group at opposite ends of the painting.
 
 The light script in each controller is set to run only once. The timing of the when the light scripts start is controlled by a near-Arduino clone, a JeeNode. The JeeNode runs a simple program that keeps track of the time and starts each controller appropriately. The JeeNode has an attached Real Time Clock (RTC) for time calculations.
-
-The usual cycle is to start one controller, wait while it moves through its script and then start the other controller. It then waits a sufficient period of time for both controllers to complete and have the LEDs off and then restarts the cycle.
 
 The LEDs and controllers are run off a 6V sealed lead-acid battery. The JeeNode is run in a very low-power mode and runs off an attached AA battery. The planned life expectency of both is longer than one month.
 
 The JeeNode communicates with the MaxM controller over an I2C interface. 
 
-[[Hardware]]
+!!Software
 
-[[Software]]
+!!!Utilities
+Various sketches that set the I2C device ids of the MaxMs, program them with light scripts, set the RTC.
+
+!!!Bench control
+Sketches for running a bench with one or two paintings and for coordinating the light cycle timing between benches.
+
+!!!Light cycle
+The usual cycle is to start one controller, wait while it moves through its script and then start the other controller. It then waits a sufficient period of time for both controllers to complete and have the LEDs off and then restarts the cycle.
+
+!!See also
+* README.md for additional information.
 
 </pre>
 </div>
