@@ -12,11 +12,15 @@
  * TODO finish description of operation
  */
 
-#define DEBUG
+#define DEBUG_FLASH
+/* #define DEBUG_TRACE */
 
 #include <JeeLib.h>
 #include <Wire.h> // needed to avoid a linker error :(
 #include <RTClib.h>
+
+const byte maxm1Dev = 12;
+const byte maxm2Dev = 13;
 
 // Start and end hours of operation
 const unsigned char start_hh = 9;
@@ -29,9 +33,6 @@ const byte maxm2_offset = 30;
 
 // boilerplate for low-power waiting
 ISR(WDT_vect) { Sleepy::watchdogEvent(); }
-
-// The MaxMs are daisy chained off Jeenode port 2
-Port maxms (2);
 
 // RTC based on the DS1307 chip connected via the Ports library
 class RTC_Plug : public DeviceI2C {
@@ -79,7 +80,7 @@ long toMin(const unsigned char hh, const unsigned char mm) {
     return (hh * 60) + mm;
 }
 
-#ifdef DEBUG
+#ifdef DEBUG_FLASH
 void doFlash(const Port ldnum, const byte cnt) {
     byte cntr = cnt;
     while (cntr > 0) {
@@ -93,10 +94,16 @@ void doFlash(const Port ldnum, const byte cnt) {
 }
 #endif
 
-PortI2C i2cBus (1);
-RTC_Plug RTC (i2cBus);
+// RTC on port 1
+PortI2C RTCbus (1);
+RTC_Plug RTC (RTCbus);
 
-#ifdef DEBUG
+// MaxMs on port 2
+PortI2C MaxMbus (2);
+DeviceI2C maxm1 (MaxMbus, maxm1Dev);
+DeviceI2C maxm2 (MaxMbus, maxm2Dev);
+
+#ifdef DEBUG_FLASH
 // LEDs are on ports 3 and 4
 // LED1 flashes once for the MAXM1 task, twice for the MAXM2 task
 Port led1 (3);
@@ -119,7 +126,7 @@ static word schedBuf[TASK_LIMIT];
 Scheduler scheduler (schedBuf, TASK_LIMIT);
 
 void setup () {
-#ifdef DEBUG
+#ifdef DEBUG_TRACE
     Serial.begin(57600);
     Serial.println("Single bench start");
     Serial.flush();
@@ -133,13 +140,32 @@ void setup () {
     start_min = toMin(start_hh, start_mm);
     stop_min = toMin(stop_hh, stop_mm);
 
-#ifdef DEBUG
+#ifdef DEBUG_FLASH
     led1.mode(OUTPUT);
     led2.mode(OUTPUT);
 #endif
 
-    // TODO 
-    // Stop the scripts on both MaxMs
+    // The MaxMs should be programmed to not start on poweroff
+    // but turn thenm off just to be sure
+
+    maxm1.send();
+    maxm1.write('o');
+    maxm1.stop();
+    maxm1.send();
+    maxm1.write('n');
+    maxm1.write(0);
+    maxm1.write(0);
+    maxm1.write(0);
+    maxm1.stop();
+    maxm2.send();
+    maxm2.write('o');
+    maxm2.stop();
+    maxm2.send();
+    maxm2.write('n');
+    maxm2.write(0);
+    maxm2.write(0);
+    maxm2.write(0);
+    maxm2.stop();
 
     // Start tasks after a pause for the power supply to settle
     scheduler.timer(OPER_TIME, 15);
@@ -150,29 +176,43 @@ void loop () {
     switch (scheduler.pollWaiting()) {
         // Control first MaxM
         case MAXM1:
-            /* Serial.print("MAXM1 is operational "); */
-            /* Serial.println(is_operational); */
-            /* Serial.flush(); */
+            maxm1.send();
+            maxm1.write('p');
+            maxm1.write(0);
+            maxm1.write(1);
+            maxm1.write(0);
+            maxm1.stop();
+#ifdef DEBUG_TRACE
+            Serial.print("MAXM1 is operational ");
+            Serial.println(is_operational);
+            Serial.flush();
+#endif
             if (is_operational == 1) {
-#ifdef DEBUG
+#ifdef DEBUG_FLASH
                 doFlash(led1, 1);
 #endif
-                // TODO
-                // Start script on first MaxM 
                 // TODO need correct amount to reschedule
-                /* Serial.println("MAXM1"); */
-                /* Serial.flush(); */
-
+#ifdef DEBUG_TRACE
+                Serial.println("MAXM1");
+                Serial.flush();
+#endif
             }
-            scheduler.timer(MAXM2, 30);
-            scheduler.timer(MAXM1, 100);
+
+            scheduler.timer(MAXM2, maxm2_offset * 10);
+            scheduler.timer(MAXM1, 900);
             break;
 
         // Control second MaxM
         case MAXM2:
             if  (is_operational != 1) break;
+            maxm2.send();
+            maxm2.write('p');
+            maxm2.write(0);
+            maxm2.write(1);
+            maxm2.write(0);
+            maxm2.stop();
 
-#ifdef DEBUG
+#ifdef DEBUG_FLASH
             doFlash(led1, 2);
 #endif
             break;
@@ -189,19 +229,25 @@ void loop () {
             // Check if should be operational and set flag
             long cur_min = toMin(now.hour(), now.minute());
             if ((cur_min >= start_min) && (cur_min < stop_min))  {
-                /* Serial.println("Operational"); */
-                /* Serial.flush(); */
+#ifdef DEBUG_TRACE
+                Serial.println("Operational");
+                Serial.flush();
+#endif
                 is_operational = 1;
-                /* Serial.print("is operational "); */
-                /* Serial.println(is_operational); */
-                /* Serial.flush(); */
+#ifdef DEBUG_TRACE
+                Serial.print("is operational ");
+                Serial.println(is_operational);
+                Serial.flush();
+#endif
             } else {
-                /* Serial.println("Sleep"); */
-                /* Serial.flush(); */
+#ifdef DEBUG_TRACE
+                Serial.println("Sleep");
+                Serial.flush();
+#endif
                 is_operational = 0;
             }
 
-#ifdef DEBUG
+#ifdef DEBUG_FLASH
             // Flash LED2 one for every minute in ten if "operational"
             // otherwise only 1 flash
             int num_flash = 1;
