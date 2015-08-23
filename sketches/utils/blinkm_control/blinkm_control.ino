@@ -392,6 +392,8 @@ void loop () {
           Serial.println("Fade speed out of range; setting to 128");
           fadeSpeed = 128;
         }
+        Serial.print("Set fade speed to ");
+        Serial.println(fadeSpeed);
         dev.send();
         dev.write('f');
         dev.write(fadeSpeed);
