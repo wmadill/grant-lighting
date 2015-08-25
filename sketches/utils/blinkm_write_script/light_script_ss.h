@@ -13,8 +13,8 @@ typedef struct _blinkm_script_line {
 blinkm_script_line script_lines[] = {
  {  1,  {'f', 1,00,00}},        // fade speed (slow)
  {  1,  {'t', 1,0,0}},          // time adjust (slower)
- { 200, {'c', 0x00,0x00,0x00}},  // start black and fade into mid-day
- { 200, {'c', 0xff,0xff,0xff}},  // stay bright for mid-day
+ { 100, {'c', 0x80,0x80,0x80}},  // start black and fade into mid-day
+ { 300, {'c', 0xff,0xff,0xff}},  // stay bright for mid-day
  { 100, {'c', 0xee,0xee,0xee}},
  { 100, {'c', 0xee,0xdd,0xcc}},
  { 100, {'c', 0xdd,0xcc,0xaa}},
