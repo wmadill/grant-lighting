@@ -25,7 +25,7 @@ const byte maxm2Dev = 13;
 // Start and end hours of operation
 const unsigned char start_hh = 9;
 const unsigned char start_mm = 0;
-const unsigned char stop_hh = 22;
+const unsigned char stop_hh = 21;
 const unsigned char stop_mm = 0;
 
 // Seconds after starting first MaxM to start second
@@ -176,14 +176,8 @@ void loop () {
     switch (scheduler.pollWaiting()) {
         // Control first MaxM
         case MAXM1:
-            maxm1.send();
-            maxm1.write('p');
-            maxm1.write(0);
-            maxm1.write(1);
-            maxm1.write(0);
-            maxm1.stop();
 #ifdef DEBUG_TRACE
-            Serial.print("MAXM1 is operational ");
+            Serial.print("MAXM1 operational: ");
             Serial.println(is_operational);
             Serial.flush();
 #endif
@@ -196,8 +190,13 @@ void loop () {
                 Serial.println("MAXM1");
                 Serial.flush();
 #endif
+                maxm1.send();
+                maxm1.write('p');
+                maxm1.write(0);
+                maxm1.write(1);
+                maxm1.write(0);
+                maxm1.stop();
             }
-
             scheduler.timer(MAXM2, maxm2_offset * 10);
             scheduler.timer(MAXM1, 900);
             break;
@@ -227,34 +226,34 @@ void loop () {
             int sec_til_loop = loop_interval - (now.get() % loop_interval);
 
             // Check if should be operational and set flag
+#ifdef DEBUG_TRACE
+            Serial.println("Lights are ");
+            Serial.flush();
+#endif
             long cur_min = toMin(now.hour(), now.minute());
             if ((cur_min >= start_min) && (cur_min < stop_min))  {
-#ifdef DEBUG_TRACE
-                Serial.println("Operational");
-                Serial.flush();
-#endif
                 is_operational = 1;
 #ifdef DEBUG_TRACE
-                Serial.print("is operational ");
-                Serial.println(is_operational);
+                Serial.print("operational");
                 Serial.flush();
 #endif
             } else {
+                is_operational = 0;
 #ifdef DEBUG_TRACE
-                Serial.println("Sleep");
+                Serial.println("sleeping");
                 Serial.flush();
 #endif
-                is_operational = 0;
             }
 
 #ifdef DEBUG_FLASH
             // Flash LED2 one for every minute in ten if "operational"
             // otherwise only 1 flash
             int num_flash = 1;
-            if (is_operational == 1) {
-                num_flash = (now.get() % 600);
-                num_flash = num_flash / 60;
-            }
+            // Actually just flash one every minute
+            // if (is_operational == 1) {
+                // num_flash = (now.get() % 600);
+                // num_flash = num_flash / 60;
+            // }
             doFlash(led2, num_flash);
 #endif
 
