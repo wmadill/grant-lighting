@@ -4,16 +4,22 @@
  * operational time.
  *
  * The MaxMs that actually control the light pattern for one group
- * of LED clusters (Blasters) are preloaded with their light
- * scripts. The MaxMs are connected over an I2C and have device ids
- * preset also. Note that the RTC has device id 0x68 whcih cannot
- * be changed.
+ * of LED clusters (Blasters) are preloaded with their light scripts.
+ * The MaxMs are connected over an I2C and have device ids preset
+ * also. Note that the RTC has device id 0x68 whcih cannot be changed.
  *
- * TODO finish description of operation
+ * There is an RTC plug on Jeenode port 1, the MaxMs are on the I2C 
+ * bus on port 2, and optionally there are 2 status LEDs on port 4
+ * being independently controlled with the DIO and AIO pins. LED1
+ * flashes once for the MAXM1 task, twice for the MAXM2 task to show
+ * the correct task ran; LED2 flashes once per minute to show the
+ * sketch is working.
  */
 
-#define DEBUG_FLASH
-/* #define DEBUG_TRACE */
+// Uncomment for LEDs flashing for debug
+#define DEBUG_FLASH 1
+// Uncomment for debug traces on the serial line
+#define DEBUG_TRACE 1 
 
 #include <JeeLib.h>
 #include <Wire.h> // needed to avoid a linker error :(
@@ -25,11 +31,15 @@ const byte maxm2Dev = 13;
 // Start and end hours of operation
 const unsigned char start_hh = 9;
 const unsigned char start_mm = 0;
-const unsigned char stop_hh = 21;
+const unsigned char stop_hh = 17;
 const unsigned char stop_mm = 0;
 
 // Seconds after starting first MaxM to start second
 const byte maxm2_offset = 30;
+
+// LEDs
+const byte led1 = 1;
+const byte led2 = 2;
 
 // boilerplate for low-power waiting
 ISR(WDT_vect) { Sleepy::watchdogEvent(); }
@@ -80,19 +90,33 @@ long toMin(const unsigned char hh, const unsigned char mm) {
     return (hh * 60) + mm;
 }
 
+void doFlash(const Port ledPort, const byte ledNum, const byte cnt) {
 #ifdef DEBUG_FLASH
-void doFlash(const Port ldnum, const byte cnt) {
+    /* Serial.print("Flash LED "); */
+    /* Serial.print(ledNum); */
+    /* Serial.print(" "); */
+    /* Serial.print(cnt); */
+    /* Serial.println(" times"); */
+    /* Serial.flush(); */
+
     byte cntr = cnt;
     while (cntr > 0) {
         cntr--;
-        ldnum.digiWrite(1);
-        Sleepy::loseSomeTime(50);
-        ldnum.digiWrite(0);
+        if (ledNum == 1) {
+          ledPort.digiWrite(1);
+          Sleepy::loseSomeTime(50);
+          ledPort.digiWrite(0);
+        } else {
+          ledPort.digiWrite2(1);
+          Sleepy::loseSomeTime(50);
+          ledPort.digiWrite2(0);
+        }
+
         if (cntr < 1) break;
         Sleepy::loseSomeTime(250);
     }
-}
 #endif
+}
 
 // RTC on port 1
 PortI2C RTCbus (1);
@@ -103,16 +127,8 @@ PortI2C MaxMbus (2);
 DeviceI2C maxm1 (MaxMbus, maxm1Dev);
 DeviceI2C maxm2 (MaxMbus, maxm2Dev);
 
-#ifdef DEBUG_FLASH
-// LEDs are on ports 3 and 4
-// LED1 flashes once for the MAXM1 task, twice for the MAXM2 task
-Port led1 (3);
-// LED2 flashes once per 10 seconds in a minute (1..6)
-Port led2 (4);
-
-byte led1_on = 0;
-byte led2_on = 0; 
-#endif
+// LEDs are on port 4
+Port ledPort (4);
 
 int is_operational = 0;
 
@@ -140,14 +156,12 @@ void setup () {
     start_min = toMin(start_hh, start_mm);
     stop_min = toMin(stop_hh, stop_mm);
 
-#ifdef DEBUG_FLASH
-    led1.mode(OUTPUT);
-    led2.mode(OUTPUT);
-#endif
+    ledPort.mode(OUTPUT);
+    ledPort.mode2(OUTPUT);
 
-    // The MaxMs should be programmed to not start on poweroff
+    // The MaxMs are supposed to be programmed to not start on poweron
     // but turn thenm off just to be sure
-
+    //TODO check for errors; and then do what?
     maxm1.send();
     maxm1.write('o');
     maxm1.stop();
@@ -182,10 +196,7 @@ void loop () {
             Serial.flush();
 #endif
             if (is_operational == 1) {
-#ifdef DEBUG_FLASH
-                doFlash(led1, 1);
-#endif
-                // TODO need correct amount to reschedule
+                doFlash(ledPort, led1, 1);
 #ifdef DEBUG_TRACE
                 Serial.println("MAXM1");
                 Serial.flush();
@@ -211,9 +222,7 @@ void loop () {
             maxm2.write(0);
             maxm2.stop();
 
-#ifdef DEBUG_FLASH
-            doFlash(led1, 2);
-#endif
+            doFlash(ledPort, led1, 2);
             break;
 
         // Check if within operational time
@@ -226,26 +235,21 @@ void loop () {
             int sec_til_loop = loop_interval - (now.get() % loop_interval);
 
             // Check if should be operational and set flag
-#ifdef DEBUG_TRACE
-            Serial.println("Lights are ");
-            Serial.flush();
-#endif
             long cur_min = toMin(now.hour(), now.minute());
             if ((cur_min >= start_min) && (cur_min < stop_min))  {
                 is_operational = 1;
 #ifdef DEBUG_TRACE
-                Serial.print("operational");
+                Serial.println("Lights are operational");
                 Serial.flush();
 #endif
             } else {
                 is_operational = 0;
 #ifdef DEBUG_TRACE
-                Serial.println("sleeping");
+                Serial.println("Lights are sleeping");
                 Serial.flush();
 #endif
             }
 
-#ifdef DEBUG_FLASH
             // Flash LED2 one for every minute in ten if "operational"
             // otherwise only 1 flash
             int num_flash = 1;
@@ -254,8 +258,7 @@ void loop () {
                 // num_flash = (now.get() % 600);
                 // num_flash = num_flash / 60;
             // }
-            doFlash(led2, num_flash);
-#endif
+            doFlash(ledPort, led2, num_flash);
 
             // Check reschedule amount aganst RTC
             scheduler.timer(OPER_TIME, sec_til_loop * 10);
