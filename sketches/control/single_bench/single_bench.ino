@@ -29,10 +29,10 @@ const byte maxm1Dev = 12;
 const byte maxm2Dev = 13;
 
 // Start and end hours of operation
-const unsigned char start_hh = 18;
-const unsigned char start_mm = 39;
-const unsigned char stop_hh = 18;
-const unsigned char stop_mm = 40;
+const unsigned char start_hh = 19;
+const unsigned char start_mm = 50;
+const unsigned char stop_hh = 19;
+const unsigned char stop_mm = 51;
 
 // Length of first MaxM light cycle in seconds
 // The light scripts on the MaxMs MUST be
@@ -48,16 +48,11 @@ const byte maxm2_offset = 15;
 // const byte check_cycle = 60;
 const byte check_cycle = 15;
 
-// Somewhere I got the idea there was a pause needed
-// at the end of the setup() function. Set it to 
-// 2 seconds.
-const byte startup_pause = 20;
-
 // LEDs
 const byte led1 = 1;
 const byte led2 = 2;
 
-// boilerplate for low-power waiting
+// Boilerplate for low-power waiting
 ISR(WDT_vect) { Sleepy::watchdogEvent(); }
 
 // RTC based on the DS1307 chip connected via the Ports library
@@ -106,28 +101,32 @@ long toMin(const unsigned char hh, const unsigned char mm) {
     return (hh * 60) + mm;
 }
 
-void doFlash(const Port ledPort, const byte ledNum, const byte cnt) {
-#ifdef DEBUG_FLASH
-    /* Serial.print("Flash LED "); */
-    /* Serial.print(ledNum); */
-    /* Serial.print(" "); */
-    /* Serial.print(cnt); */
-    /* Serial.println(" times"); */
-    /* Serial.flush(); */
+void ledOn (const Port ledPort, byte mask) {
+  if (mask & 1) {
+    ledPort.digiWrite(1);
+  }
+  if (mask & 2) {
+    ledPort.digiWrite2(1);
+  }
+}
 
+void ledOff (const Port ledPort, byte mask) {
+  if (mask & 1) {
+    ledPort.digiWrite(0);
+  }
+  if (mask & 2) {
+    ledPort.digiWrite2(0);
+  }
+}
+
+void doFlash(const Port ledPort, const byte mask, const byte cnt) {
+#ifdef DEBUG_FLASH
     byte cntr = cnt;
     while (cntr > 0) {
         cntr--;
-        if (ledNum == 1) {
-          ledPort.digiWrite(1);
-          Sleepy::loseSomeTime(50);
-          ledPort.digiWrite(0);
-        } else {
-          ledPort.digiWrite2(1);
-          Sleepy::loseSomeTime(50);
-          ledPort.digiWrite2(0);
-        }
-
+        ledOn(ledPort, mask);
+        Sleepy::loseSomeTime(50);
+        ledOff(ledPort, mask);
         if (cntr < 1) break;
         Sleepy::loseSomeTime(250);
     }
@@ -172,6 +171,12 @@ void setup () {
     // Not sure this is needed since it is a null function
     RTC.begin();
 
+    ledPort.mode(OUTPUT);
+    ledPort.mode2(OUTPUT);
+
+    // Flash both LEDs to show setup starting
+    doFlash(ledPort, 1 + 2, 1);
+
     // Turn the radio off completely
     rf12_initialize(17, RF12_868MHZ);
     rf12_sleep(RF12_SLEEP);
@@ -179,9 +184,6 @@ void setup () {
     // Convert start hh:mm to a start minutes
     start_min = toMin(start_hh, start_mm);
     stop_min = toMin(stop_hh, stop_mm);
-
-    ledPort.mode(OUTPUT);
-    ledPort.mode2(OUTPUT);
 
     // The MaxMs are supposed to be programmed to not start on power-on
     // but turn thenm off just to be sure
@@ -205,11 +207,19 @@ void setup () {
     maxm2.write(0);
     maxm2.stop();
 
-    //TODO check the RTC is working correctly
+    // Check the RTC is working correctly
+    DateTime t1 = RTC.now();
+    // Wait 2 seconds and see if the clock changes
+    Sleepy::loseSomeTime(2000);
+    DateTime t2 = RTC.now();
 
-    // Start tasks after a pause for the power supply to settle
-    // Not sure where the "pause" came from!
-    scheduler.timer(OPER_TIME, startup_pause);
+    // If no time elapsed, RTC is stopped so blink both LEDs 8 times
+    if (t1.second() == t2.second()) {
+        doFlash(ledPort, 1 + 2, 8);
+    }
+
+    // Start the main task
+    scheduler.timer(OPER_TIME, 0);
 }
 
 void loop () {
