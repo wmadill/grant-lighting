@@ -29,13 +29,29 @@ const byte maxm1Dev = 12;
 const byte maxm2Dev = 13;
 
 // Start and end hours of operation
-const unsigned char start_hh = 9;
-const unsigned char start_mm = 0;
-const unsigned char stop_hh = 17;
-const unsigned char stop_mm = 0;
+const unsigned char start_hh = 18;
+const unsigned char start_mm = 39;
+const unsigned char stop_hh = 18;
+const unsigned char stop_mm = 40;
+
+// Length of first MaxM light cycle in seconds
+// The light scripts on the MaxMs MUST be
+// shorter than this value.
+// const byte maxm1_cycle = 90;
+const byte maxm1_cycle = 30;
 
 // Seconds after starting first MaxM to start second
-const byte maxm2_offset = 30;
+// const byte maxm2_offset = 30;
+const byte maxm2_offset = 15;
+
+// Length of time check cycle in seconds
+// const byte check_cycle = 60;
+const byte check_cycle = 15;
+
+// Somewhere I got the idea there was a pause needed
+// at the end of the setup() function. Set it to 
+// 2 seconds.
+const byte startup_pause = 20;
 
 // LEDs
 const byte led1 = 1;
@@ -130,7 +146,11 @@ DeviceI2C maxm2 (MaxMbus, maxm2Dev);
 // LEDs are on port 4
 Port ledPort (4);
 
-int is_operational = 0;
+// 1 = lights working, 0 = lights not
+byte is_operational = 0;
+
+// Set to 1 when MaxM 1 is active
+byte maxm1_active = 0;
 
 long start_min = 0;
 long stop_min = 0;
@@ -148,6 +168,10 @@ void setup () {
     Serial.flush();
 #endif
 
+    // Start the clock
+    // Not sure this is needed since it is a null function
+    RTC.begin();
+
     // Turn the radio off completely
     rf12_initialize(17, RF12_868MHZ);
     rf12_sleep(RF12_SLEEP);
@@ -159,7 +183,7 @@ void setup () {
     ledPort.mode(OUTPUT);
     ledPort.mode2(OUTPUT);
 
-    // The MaxMs are supposed to be programmed to not start on poweron
+    // The MaxMs are supposed to be programmed to not start on power-on
     // but turn thenm off just to be sure
     //TODO check for errors; and then do what?
     maxm1.send();
@@ -181,21 +205,20 @@ void setup () {
     maxm2.write(0);
     maxm2.stop();
 
+    //TODO check the RTC is working correctly
+
     // Start tasks after a pause for the power supply to settle
-    scheduler.timer(OPER_TIME, 15);
-    scheduler.timer(MAXM1, 20);
+    // Not sure where the "pause" came from!
+    scheduler.timer(OPER_TIME, startup_pause);
 }
 
 void loop () {
     switch (scheduler.pollWaiting()) {
         // Control first MaxM
         case MAXM1:
-#ifdef DEBUG_TRACE
-            Serial.print("MAXM1 operational: ");
-            Serial.println(is_operational);
-            Serial.flush();
-#endif
             if (is_operational == 1) {
+                scheduler.timer(MAXM1, maxm1_cycle * 10);
+                scheduler.timer(MAXM2, maxm2_offset * 10);
                 doFlash(ledPort, led1, 1);
 #ifdef DEBUG_TRACE
                 Serial.println("MAXM1");
@@ -207,14 +230,11 @@ void loop () {
                 maxm1.write(1);
                 maxm1.write(0);
                 maxm1.stop();
-            }
-            scheduler.timer(MAXM2, maxm2_offset * 10);
-            scheduler.timer(MAXM1, 900);
+            } 
             break;
 
         // Control second MaxM
         case MAXM2:
-            if  (is_operational != 1) break;
             maxm2.send();
             maxm2.write('p');
             maxm2.write(0);
@@ -223,6 +243,10 @@ void loop () {
             maxm2.stop();
 
             doFlash(ledPort, led1, 2);
+#ifdef DEBUG_TRACE
+            Serial.println("MAXM2");
+            Serial.flush();
+#endif
             break;
 
         // Check if within operational time
@@ -230,38 +254,52 @@ void loop () {
             // Get time
             DateTime now = RTC.now();
 
-            // Loop every 60 seconds
-            const int loop_interval = 60;
-            int sec_til_loop = loop_interval - (now.get() % loop_interval);
+            // Check every check_cycle seconds
+            int sec_til_check = check_cycle - (now.get() % check_cycle);
+            scheduler.timer(OPER_TIME, sec_til_check * 10);
 
-            // Check if should be operational and set flag
+#ifdef DEBUG_TRACE
+            Serial.print("RTC time: ");
+            Serial.print(now.year());
+            Serial.print('-');
+            Serial.print(now.month());
+            Serial.print('-');
+            Serial.print(now.day());
+            Serial.print(' ');
+            Serial.print(now.hour());
+            Serial.print(':');
+            Serial.print(now.minute());
+            Serial.print(':');
+            Serial.print(now.second());
+            Serial.print(" dow: ");
+            Serial.println(now.dayOfWeek());
+            Serial.flush();
+#endif
+            // Check if should be operational and set flag 
             long cur_min = toMin(now.hour(), now.minute());
             if ((cur_min >= start_min) && (cur_min < stop_min))  {
                 is_operational = 1;
+                // Start the MAXM1 task if not already active
+                if (maxm1_active == 0) {
+                  scheduler.timer(MAXM1, 0);
+                  maxm1_active = 1;
+                }
 #ifdef DEBUG_TRACE
                 Serial.println("Lights are operational");
                 Serial.flush();
 #endif
             } else {
                 is_operational = 0;
+                maxm1_active = 0;
+                //TODO consider turning off MaxMs like in setup()
 #ifdef DEBUG_TRACE
                 Serial.println("Lights are sleeping");
                 Serial.flush();
 #endif
             }
 
-            // Flash LED2 one for every minute in ten if "operational"
-            // otherwise only 1 flash
-            int num_flash = 1;
-            // Actually just flash one every minute
-            // if (is_operational == 1) {
-                // num_flash = (now.get() % 600);
-                // num_flash = num_flash / 60;
-            // }
-            doFlash(ledPort, led2, num_flash);
-
-            // Check reschedule amount aganst RTC
-            scheduler.timer(OPER_TIME, sec_til_loop * 10);
+            // Flash LED2 one for every minute
+            doFlash(ledPort, led2, 1);
             break;
     }
 }
