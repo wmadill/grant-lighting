@@ -17,22 +17,17 @@
  */
 
 // Uncomment for LEDs flashing for debug
-#define DEBUG_FLASH 1
+#define DEBUG_FLASH
 // Uncomment for debug traces on the serial line
-#define DEBUG_TRACE 1 
+#define DEBUG_TRACE 
 
 #include <JeeLib.h>
 #include <Wire.h> // needed to avoid a linker error :(
 #include <RTClib.h>
+#include "benches.h"
 
 const byte maxm1Dev = 12;
 const byte maxm2Dev = 13;
-
-// Start and end hours of operation
-const unsigned char start_hh = 19;
-const unsigned char start_mm = 50;
-const unsigned char stop_hh = 19;
-const unsigned char stop_mm = 51;
 
 // Length of first MaxM light cycle in seconds
 // The light scripts on the MaxMs MUST be
@@ -97,42 +92,6 @@ public:
     }
 };
 
-long toMin(const unsigned char hh, const unsigned char mm) {
-    return (hh * 60) + mm;
-}
-
-void ledOn (const Port ledPort, byte mask) {
-  if (mask & 1) {
-    ledPort.digiWrite(1);
-  }
-  if (mask & 2) {
-    ledPort.digiWrite2(1);
-  }
-}
-
-void ledOff (const Port ledPort, byte mask) {
-  if (mask & 1) {
-    ledPort.digiWrite(0);
-  }
-  if (mask & 2) {
-    ledPort.digiWrite2(0);
-  }
-}
-
-void doFlash(const Port ledPort, const byte mask, const byte cnt) {
-#ifdef DEBUG_FLASH
-    byte cntr = cnt;
-    while (cntr > 0) {
-        cntr--;
-        ledOn(ledPort, mask);
-        Sleepy::loseSomeTime(50);
-        ledOff(ledPort, mask);
-        if (cntr < 1) break;
-        Sleepy::loseSomeTime(250);
-    }
-#endif
-}
-
 // RTC on port 1
 PortI2C RTCbus (1);
 RTC_Plug RTC (RTCbus);
@@ -151,8 +110,16 @@ byte is_operational = 0;
 // Set to 1 when MaxM 1 is active
 byte maxm1_active = 0;
 
-long start_min = 0;
-long stop_min = 0;
+// Wake periods
+Wakeperiod wps[] = {
+    {1, {hm2min(19, 59), hm2min(20, 18)}},
+    {1, {hm2min(20, 20), hm2min(20, 22)}},
+    {1, {hm2min(20, 25), hm2min(20, 27)}},
+    {1, {hm2min(21, 3), hm2min(21, 15)}},
+    {2, {hm2min(7, 40), hm2min(9, 3)}},
+    {2, {hm2min(11, 40), hm2min(19, 59)}},
+};
+byte num_wps = sizeof(wps) / sizeof(wps[0]);
 
 // Add more tasks for second bench
 enum { MAXM1, MAXM2, OPER_TIME, TASK_LIMIT };
@@ -160,6 +127,7 @@ enum { MAXM1, MAXM2, OPER_TIME, TASK_LIMIT };
 static word schedBuf[TASK_LIMIT];
 Scheduler scheduler (schedBuf, TASK_LIMIT);
 
+// Initialization
 void setup () {
 #ifdef DEBUG_TRACE
     Serial.begin(57600);
@@ -181,13 +149,12 @@ void setup () {
     rf12_initialize(17, RF12_868MHZ);
     rf12_sleep(RF12_SLEEP);
 
-    // Convert start hh:mm to a start minutes
-    start_min = toMin(start_hh, start_mm);
-    stop_min = toMin(stop_hh, stop_mm);
-
     // The MaxMs are supposed to be programmed to not start on power-on
     // but turn thenm off just to be sure
     //TODO check for errors; and then do what?
+    maxmOff(maxm1);
+    maxmOff(maxm2);
+    /*
     maxm1.send();
     maxm1.write('o');
     maxm1.stop();
@@ -206,6 +173,7 @@ void setup () {
     maxm2.write(0);
     maxm2.write(0);
     maxm2.stop();
+    */
 
     // Check the RTC is working correctly
     DateTime t1 = RTC.now();
@@ -234,23 +202,25 @@ void loop () {
                 Serial.println("MAXM1");
                 Serial.flush();
 #endif
-                maxm1.send();
-                maxm1.write('p');
-                maxm1.write(0);
-                maxm1.write(1);
-                maxm1.write(0);
-                maxm1.stop();
+                maxmRun(maxm1);
+            //     maxm1.send();
+            //     maxm1.write('p');
+            //     maxm1.write(0);
+            //     maxm1.write(1);
+            //     maxm1.write(0);
+            //     maxm1.stop();
             } 
             break;
 
         // Control second MaxM
         case MAXM2:
-            maxm2.send();
-            maxm2.write('p');
-            maxm2.write(0);
-            maxm2.write(1);
-            maxm2.write(0);
-            maxm2.stop();
+            maxmRun(maxm2);
+            // maxm2.send();
+            // maxm2.write('p');
+            // maxm2.write(0);
+            // maxm2.write(1);
+            // maxm2.write(0);
+            // maxm2.stop();
 
             doFlash(ledPort, led1, 2);
 #ifdef DEBUG_TRACE
@@ -280,15 +250,12 @@ void loop () {
             Serial.print(':');
             Serial.print(now.minute());
             Serial.print(':');
-            Serial.print(now.second());
-            Serial.print(" dow: ");
-            Serial.println(now.dayOfWeek());
+            Serial.println(now.second());
             Serial.flush();
 #endif
             // Check if should be operational and set flag 
-            long cur_min = toMin(now.hour(), now.minute());
-            if ((cur_min >= start_min) && (cur_min < stop_min))  {
-                is_operational = 1;
+            is_operational = checkAwake(now, wps, num_wps);
+            if (is_operational == 1) {
                 // Start the MAXM1 task if not already active
                 if (maxm1_active == 0) {
                   scheduler.timer(MAXM1, 0);
@@ -299,7 +266,6 @@ void loop () {
                 Serial.flush();
 #endif
             } else {
-                is_operational = 0;
                 maxm1_active = 0;
                 //TODO consider turning off MaxMs like in setup()
 #ifdef DEBUG_TRACE
