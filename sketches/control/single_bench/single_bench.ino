@@ -19,7 +19,7 @@
 // Uncomment for LEDs flashing for debug
 #define DEBUG_FLASH
 // Uncomment for debug traces on the serial line
-#define DEBUG_TRACE 
+// #define DEBUG_TRACE 
 
 #include <JeeLib.h>
 #include <Wire.h> // needed to avoid a linker error :(
@@ -40,8 +40,15 @@ const byte maxm2_offset = 30;
 // const byte maxm2_offset = 15;
 
 // Length of time check cycle in seconds
-const byte check_cycle = 60;
-// const byte check_cycle = 15;
+const word check_cycle = 60;
+// const word check_cycle = 15;
+
+// Number of time check cycles before refreshing the millis()-based
+// RTC from real RTC. For example with the time check cycle is 60
+// (once per minute), set the RTC_refresh_cycle to 720 to refresh
+// every 12 hours.
+// const int mRTC_refresh_cycle = 720;
+const int mRTC_refresh_cycle = 5;
 
 // LEDs
 const byte led1 = 1;
@@ -104,8 +111,11 @@ DeviceI2C maxm2 (MaxMbus, maxm2Dev);
 // LEDs on port 4
 Port ledPort (4);
 
-// 1 = lights working, 0 = lights not
-byte is_operational = 0;
+// millis()-based RTC 
+RTC_Millis millisRTC;
+
+// Currest millisRTC cycle
+int cur_mRTC_cycle = 0;
 
 // Set to 1 when the MaxMs are awake (active)
 byte maxms_awake = 0;
@@ -119,15 +129,15 @@ byte maxms_awake = 0;
 //    wake time of the next period.
 // 3. This implies that the periods cannot overlap.
 Wakeperiod wps[] = {
-    {1, hm2min(19, 59), hm2min(20, 18)},
-    {1, hm2min(21, 31), hm2min(21, 32)},
-    {1, hm2min(21, 34), hm2min(21, 36)},
-    {1, hm2min(21, 39), hm2min(21, 42)},
-    {1, hm2min(22, 17), hm2min(22, 20)},
-    {1, hm2min(22, 22), hm2min(22, 24)},
-    {2, hm2min(6, 40), hm2min(6, 58)},
-    {2, hm2min(7, 40), hm2min(8, 3)},
-    {2, hm2min(11, 40), hm2min(19, 59)},
+    /* {3, hm2min(8, 30), hm2min(8, 32)}, */
+    /* {3, hm2min(8, 34), hm2min(8, 36)}, */
+    /* {3, hm2min(8, 37), hm2min(8, 38)}, */
+    /* {3, hm2min(8, 40), hm2min(8, 42)}, */
+    /* {3, hm2min(9, 1), hm2min(9, 8)}, */
+    /* {3, hm2min(9, 22), hm2min(9, 24)}, */
+    /* {3, hm2min(9, 30), hm2min(9, 38)}, */
+    {3, hm2min(11, 6), hm2min(11, 13)},
+    {3, hm2min(11, 20), hm2min(10, 24)},
 };
 byte num_wps = sizeof(wps) / sizeof(wps[0]);
 
@@ -195,6 +205,10 @@ void setup () {
     if (t1.second() == t2.second()) {
         doFlash(ledPort, 1 + 2, 8);
     }
+
+    // Initialize millisRTC for time check task
+    millisRTC.begin(t2);
+    cur_mRTC_cycle = mRTC_refresh_cycle; 
     
 #ifdef DEBUG_TRACE
     // Dump wps array
@@ -221,8 +235,8 @@ void loop () {
         case MAXM1:
             if (!maxms_awake) break;
 
-            scheduler.timer(MAXM1, maxm1_cycle * 10);
-            scheduler.timer(MAXM2, maxm2_offset * 10);
+            scheduler.timer(MAXM1, (word) (maxm1_cycle * 10));
+            scheduler.timer(MAXM2, (word) (maxm2_offset * 10));
             doFlash(ledPort, led1, 1);
             maxmRun(maxm1);
             // maxm1.send();
@@ -258,18 +272,62 @@ void loop () {
 
         // Check if awake or asleep
         case CHK_TIME:
+            // Reset millis()-based RTC from real one if the time
+            // cycles have elapsed
+            if (--cur_mRTC_cycle < 0) {
+#ifdef DEBUG_TRACE
+                DateTime t_mrtc = millisRTC.now();
+                Serial.print("mRTC time: ");
+                Serial.print(t_mrtc.year());
+                Serial.print('-');
+                Serial.print(t_mrtc.month());
+                Serial.print('-');
+                Serial.print(t_mrtc.day());
+                Serial.print(' ');
+                Serial.print(t_mrtc.hour());
+                Serial.print(':');
+                Serial.print(t_mrtc.minute());
+                Serial.print(':');
+                Serial.println(t_mrtc.second());
+                Serial.flush();
+                DateTime t_rtc = RTC.now();
+                Serial.print("RTC time: ");
+                Serial.print(t_rtc.year());
+                Serial.print('-');
+                Serial.print(t_rtc.month());
+                Serial.print('-');
+                Serial.print(t_rtc.day());
+                Serial.print(' ');
+                Serial.print(t_rtc.hour());
+                Serial.print(':');
+                Serial.print(t_rtc.minute());
+                Serial.print(':');
+                Serial.println(t_rtc.second());
+                Serial.flush();
+#endif
+                millisRTC.adjust(RTC.now());
+                cur_mRTC_cycle = mRTC_refresh_cycle; 
+#ifdef DEBUG_TRACE
+                Serial.println("mRTC refreshed");
+                Serial.flush();
+#endif
+            } 
+
             // Get time
-            DateTime now = RTC.now();
+            DateTime now = millisRTC.now();
 
             // Check every check_cycle seconds
-            int sec_til_check = check_cycle - (now.get() % check_cycle);
+            word sec_til_check = check_cycle - (now.get() % check_cycle);
+            // Never check sooner than 2 seconds. A perhaps futile attempt
+            // to prevent RTC clock from being interrogated too often
+            if (sec_til_check < 2) sec_til_check = 2;
             // TODO if sec_til_check is shorter than the check cycle by
             // more than a couple seconds, then reschedule and break so
             // the lights start their cycle with the CHK_TIME cycle.
             scheduler.timer(CHK_TIME, sec_til_check * 10);
 
 #ifdef DEBUG_TRACE
-            Serial.print("RTC time: ");
+            Serial.print("mRTC time: ");
             Serial.print(now.year());
             Serial.print('-');
             Serial.print(now.month());
