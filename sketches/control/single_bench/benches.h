@@ -11,14 +11,16 @@
 
 #define hm2min(h, m) (((h) * 60) + (m))
 
-// TODO extend to allow years and months
-// Wake period is a day (of the month) and an array of 2 ints as
-// day_min_on, day_min_off where a day_min_x is the number of
-// minutes since midnight. Use the hm2min macro to convert 
-// a static (hh, mm) to a day_min
+// TODO extend the structure to include years and months. It only
+// works now for days within one month.
+// A Wakeperiod is a day (of the month), a wake time and a sleep time;
+// all are ints. The wake and sleep times are in minutes since
+// midnight. The "nm2min()" macro converts an hour and minute
+// to make it easier to read.
 typedef struct {
     int day;
-    int day_mins[2];
+    int wake;
+    int sleep;
 } Wakeperiod;
 
 const byte ASLEEP = 0;
@@ -58,8 +60,10 @@ int toMin(const unsigned char hh, const unsigned char mm) {
     return (hh * 60) + mm;
 }
 
+
 byte checkAwake(const DateTime dt, Wakeperiod* ps, const byte num_periods) {
-    // Hold the current period index
+    // Hold the current period index so scanning the Wakeperiod array
+    // starts where it left off rather than always at the beginning
     static byte i = 0;
 
     for (; i < num_periods; i++) {
@@ -67,8 +71,8 @@ byte checkAwake(const DateTime dt, Wakeperiod* ps, const byte num_periods) {
         if (dt.day() > wp.day) continue;
         if (dt.day() < wp.day) return ASLEEP;
         int dt_min = toMin(dt.hour(), dt.minute());
-        if (dt_min < wp.day_mins[0]) return ASLEEP;
-        if (dt_min < wp.day_mins[1]) return AWAKE;
+        if (dt_min < wp.wake) return ASLEEP;
+        if (dt_min < wp.sleep) return AWAKE;
     }
     return ASLEEP;
 }
