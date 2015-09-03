@@ -12,8 +12,8 @@
  * bus on port 2, and optionally there are 2 status LEDs on port 4
  * being independently controlled with the DIO and AIO pins. LED1
  * flashes once for the MAXM1 task, twice for the MAXM2 task to show
- * the correct task ran; LED2 flashes once per minute to show the
- * sketch is working.
+ * the correct task ran; LED2 flashes twice per minute when the
+ * lights are awake and once per minute when they are asleep.
  */
 
 // Uncomment for LEDs flashing for debug
@@ -32,16 +32,16 @@ const byte maxm2Dev = 13;
 // Length of first MaxM light cycle in seconds
 // The light scripts on the MaxMs MUST be
 // shorter than this value.
-// const byte maxm1_cycle = 90;
-const byte maxm1_cycle = 30;
+const byte maxm1_cycle = 90;
+// const byte maxm1_cycle = 30;
 
 // Seconds after starting first MaxM to start second
-// const byte maxm2_offset = 30;
-const byte maxm2_offset = 15;
+const byte maxm2_offset = 30;
+// const byte maxm2_offset = 15;
 
 // Length of time check cycle in seconds
-// const byte check_cycle = 60;
-const byte check_cycle = 15;
+const byte check_cycle = 60;
+// const byte check_cycle = 15;
 
 // LEDs
 const byte led1 = 1;
@@ -101,28 +101,38 @@ PortI2C MaxMbus (2);
 DeviceI2C maxm1 (MaxMbus, maxm1Dev);
 DeviceI2C maxm2 (MaxMbus, maxm2Dev);
 
-// LEDs are on port 4
+// LEDs on port 4
 Port ledPort (4);
 
 // 1 = lights working, 0 = lights not
 byte is_operational = 0;
 
-// Set to 1 when MaxM 1 is active
-byte maxm1_active = 0;
+// Set to 1 when the MaxMs are awake (active)
+byte maxms_awake = 0;
 
-// Wake periods
+// Wake periods. There are some serious constraints on this list
+// which are not checked but violations will cause unintended
+// results!
+// 1. The entries must be in ascending order by day and 
+//    start time.
+// 2. The sleep time of one period must be earlier than the
+//    wake time of the next period.
+// 3. This implies that the periods cannot overlap.
 Wakeperiod wps[] = {
-    {1, {hm2min(19, 59), hm2min(20, 18)}},
-    {1, {hm2min(20, 20), hm2min(20, 22)}},
-    {1, {hm2min(20, 25), hm2min(20, 27)}},
-    {1, {hm2min(21, 3), hm2min(21, 15)}},
-    {2, {hm2min(7, 40), hm2min(9, 3)}},
-    {2, {hm2min(11, 40), hm2min(19, 59)}},
+    {1, hm2min(19, 59), hm2min(20, 18)},
+    {1, hm2min(21, 31), hm2min(21, 32)},
+    {1, hm2min(21, 34), hm2min(21, 36)},
+    {1, hm2min(21, 39), hm2min(21, 42)},
+    {1, hm2min(22, 17), hm2min(22, 20)},
+    {1, hm2min(22, 22), hm2min(22, 24)},
+    {2, hm2min(6, 40), hm2min(6, 58)},
+    {2, hm2min(7, 40), hm2min(8, 3)},
+    {2, hm2min(11, 40), hm2min(19, 59)},
 };
 byte num_wps = sizeof(wps) / sizeof(wps[0]);
 
 // Add more tasks for second bench
-enum { MAXM1, MAXM2, OPER_TIME, TASK_LIMIT };
+enum { MAXM1, MAXM2, CHK_TIME, TASK_LIMIT };
 
 static word schedBuf[TASK_LIMIT];
 Scheduler scheduler (schedBuf, TASK_LIMIT);
@@ -185,35 +195,53 @@ void setup () {
     if (t1.second() == t2.second()) {
         doFlash(ledPort, 1 + 2, 8);
     }
+    
+#ifdef DEBUG_TRACE
+    // Dump wps array
+    for (int i = 0; i < num_wps; i++) {
+      Serial.print("wp[");
+      Serial.print(i);
+      Serial.print("]: ");
+      Serial.print(wps[i].day);
+      Serial.print(", ");
+      Serial.print(wps[i].wake);
+      Serial.print(",");
+      Serial.println(wps[i].sleep);
+      Serial.flush();
+    }
+#endif
 
     // Start the main task
-    scheduler.timer(OPER_TIME, 0);
+    scheduler.timer(CHK_TIME, 0);
 }
 
 void loop () {
     switch (scheduler.pollWaiting()) {
         // Control first MaxM
         case MAXM1:
-            if (is_operational == 1) {
-                scheduler.timer(MAXM1, maxm1_cycle * 10);
-                scheduler.timer(MAXM2, maxm2_offset * 10);
-                doFlash(ledPort, led1, 1);
+            if (!maxms_awake) break;
+
+            scheduler.timer(MAXM1, maxm1_cycle * 10);
+            scheduler.timer(MAXM2, maxm2_offset * 10);
+            doFlash(ledPort, led1, 1);
+            maxmRun(maxm1);
+            // maxm1.send();
+            // maxm1.write('p');
+            // maxm1.write(0);
+            // maxm1.write(1);
+            // maxm1.write(0);
+            // maxm1.stop();
 #ifdef DEBUG_TRACE
-                Serial.println("MAXM1");
-                Serial.flush();
+            Serial.println("MAXM1");
+            Serial.flush();
 #endif
-                maxmRun(maxm1);
-            //     maxm1.send();
-            //     maxm1.write('p');
-            //     maxm1.write(0);
-            //     maxm1.write(1);
-            //     maxm1.write(0);
-            //     maxm1.stop();
-            } 
             break;
 
         // Control second MaxM
         case MAXM2:
+            if (!maxms_awake) break;
+
+            doFlash(ledPort, led1, 2);
             maxmRun(maxm2);
             // maxm2.send();
             // maxm2.write('p');
@@ -222,21 +250,23 @@ void loop () {
             // maxm2.write(0);
             // maxm2.stop();
 
-            doFlash(ledPort, led1, 2);
 #ifdef DEBUG_TRACE
             Serial.println("MAXM2");
             Serial.flush();
 #endif
             break;
 
-        // Check if within operational time
-        case OPER_TIME:
+        // Check if awake or asleep
+        case CHK_TIME:
             // Get time
             DateTime now = RTC.now();
 
             // Check every check_cycle seconds
             int sec_til_check = check_cycle - (now.get() % check_cycle);
-            scheduler.timer(OPER_TIME, sec_til_check * 10);
+            // TODO if sec_til_check is shorter than the check cycle by
+            // more than a couple seconds, then reschedule and break so
+            // the lights start their cycle with the CHK_TIME cycle.
+            scheduler.timer(CHK_TIME, sec_til_check * 10);
 
 #ifdef DEBUG_TRACE
             Serial.print("RTC time: ");
@@ -253,29 +283,29 @@ void loop () {
             Serial.println(now.second());
             Serial.flush();
 #endif
-            // Check if should be operational and set flag 
-            is_operational = checkAwake(now, wps, num_wps);
-            if (is_operational == 1) {
+            // Check if should be awake or asleep
+            if (checkAwake(now, wps, num_wps)) {
                 // Start the MAXM1 task if not already active
-                if (maxm1_active == 0) {
+                if (!maxms_awake) {
+                  maxms_awake = 1;
                   scheduler.timer(MAXM1, 0);
-                  maxm1_active = 1;
                 }
+                // Flash LED2 twice every minute
+                doFlash(ledPort, led2, 2);
 #ifdef DEBUG_TRACE
-                Serial.println("Lights are operational");
+                Serial.println("Awake");
                 Serial.flush();
 #endif
             } else {
-                maxm1_active = 0;
+                maxms_awake = 0;
+                // Flash LED2 once every minute
+                doFlash(ledPort, led2, 1);
                 //TODO consider turning off MaxMs like in setup()
 #ifdef DEBUG_TRACE
-                Serial.println("Lights are sleeping");
+                Serial.println("Asleep");
                 Serial.flush();
 #endif
             }
-
-            // Flash LED2 one for every minute
-            doFlash(ledPort, led2, 1);
             break;
     }
 }
