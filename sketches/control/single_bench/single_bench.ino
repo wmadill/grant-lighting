@@ -26,8 +26,8 @@
 #include <RTClib.h>
 #include "benches.h"
 
-const byte maxm1Dev = 12;
-const byte maxm2Dev = 13;
+const byte maxm1Dev = 13;
+const byte maxm2Dev = 12;
 
 // Length of first MaxM light cycle in seconds
 // The light scripts on the MaxMs MUST be
@@ -136,8 +136,7 @@ Wakeperiod wps[] = {
     /* {3, hm2min(9, 1), hm2min(9, 8)}, */
     /* {3, hm2min(9, 22), hm2min(9, 24)}, */
     /* {3, hm2min(9, 30), hm2min(9, 38)}, */
-    {3, hm2min(11, 6), hm2min(11, 13)},
-    {3, hm2min(11, 20), hm2min(10, 24)},
+    {3, hm2min(11, 0), hm2min(13, 0)},
 };
 byte num_wps = sizeof(wps) / sizeof(wps[0]);
 
@@ -174,26 +173,6 @@ void setup () {
     //TODO check for errors; and then do what?
     maxmOff(maxm1);
     maxmOff(maxm2);
-    /*
-    maxm1.send();
-    maxm1.write('o');
-    maxm1.stop();
-    maxm1.send();
-    maxm1.write('n');
-    maxm1.write(0);
-    maxm1.write(0);
-    maxm1.write(0);
-    maxm1.stop();
-    maxm2.send();
-    maxm2.write('o');
-    maxm2.stop();
-    maxm2.send();
-    maxm2.write('n');
-    maxm2.write(0);
-    maxm2.write(0);
-    maxm2.write(0);
-    maxm2.stop();
-    */
 
     // Check the RTC is working correctly
     DateTime t1 = RTC.now();
@@ -239,12 +218,6 @@ void loop () {
             scheduler.timer(MAXM2, (word) (maxm2_offset * 10));
             doFlash(ledPort, led1, 1);
             maxmRun(maxm1);
-            // maxm1.send();
-            // maxm1.write('p');
-            // maxm1.write(0);
-            // maxm1.write(1);
-            // maxm1.write(0);
-            // maxm1.stop();
 #ifdef DEBUG_TRACE
             Serial.println("MAXM1");
             Serial.flush();
@@ -257,12 +230,6 @@ void loop () {
 
             doFlash(ledPort, led1, 2);
             maxmRun(maxm2);
-            // maxm2.send();
-            // maxm2.write('p');
-            // maxm2.write(0);
-            // maxm2.write(1);
-            // maxm2.write(0);
-            // maxm2.stop();
 
 #ifdef DEBUG_TRACE
             Serial.println("MAXM2");
@@ -358,7 +325,9 @@ void loop () {
                 maxms_awake = 0;
                 // Flash LED2 once every minute
                 doFlash(ledPort, led2, 1);
-                //TODO consider turning off MaxMs like in setup()
+                // Turn off MaxMs 
+                maxmOff(maxm1);
+                maxmOff(maxm2);
 #ifdef DEBUG_TRACE
                 Serial.println("Asleep");
                 Serial.flush();
