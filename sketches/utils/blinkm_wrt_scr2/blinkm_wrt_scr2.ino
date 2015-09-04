@@ -15,8 +15,8 @@
 // #include "light_script_ss.h"
 #include "light_script_sr.h"
 
-// I2C device id for MaxM being programmed
-const byte maxmDev = 12;
+// I2C device id for MaxM being programmed; set in light script header
+byte maxmDev = BlinkM_devid;
 
 // MaxMs on port 2
 PortI2C MaxMbus (2);
