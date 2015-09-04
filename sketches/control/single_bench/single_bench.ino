@@ -32,11 +32,11 @@ const byte maxm2Dev = 12;
 // Length of first MaxM light cycle in seconds
 // The light scripts on the MaxMs MUST be
 // shorter than this value.
-const byte maxm1_cycle = 90;
+const byte maxm1_cycle = 75;
 // const byte maxm1_cycle = 30;
 
 // Seconds after starting first MaxM to start second
-const byte maxm2_offset = 30;
+const byte maxm2_offset = 20;
 // const byte maxm2_offset = 15;
 
 // Length of time check cycle in seconds
@@ -128,15 +128,28 @@ byte maxms_awake = 0;
 // 2. The sleep time of one period must be earlier than the
 //    wake time of the next period.
 // 3. This implies that the periods cannot overlap.
+
+// Set to Orcas Center schedule 9/2015
 Wakeperiod wps[] = {
-    /* {3, hm2min(8, 30), hm2min(8, 32)}, */
-    /* {3, hm2min(8, 34), hm2min(8, 36)}, */
-    /* {3, hm2min(8, 37), hm2min(8, 38)}, */
-    /* {3, hm2min(8, 40), hm2min(8, 42)}, */
-    /* {3, hm2min(9, 1), hm2min(9, 8)}, */
-    /* {3, hm2min(9, 22), hm2min(9, 24)}, */
-    /* {3, hm2min(9, 30), hm2min(9, 38)}, */
-    {3, hm2min(11, 0), hm2min(13, 0)},
+    {4,  hm2min(10, 0),  hm2min(22, 0)},
+    {5,  hm2min(17, 30), hm2min(22, 0)},
+    {6,  hm2min(17, 30), hm2min(22, 0)},
+    {8,  hm2min(10, 0),  hm2min(17, 0)},
+    {9,  hm2min(10, 0),  hm2min(17, 0)},
+    {10, hm2min(10, 0),  hm2min(17, 0)},
+    {11, hm2min(10, 0),  hm2min(17, 0)},
+    {15, hm2min(10, 0),  hm2min(17, 0)},
+    {16, hm2min(10, 0),  hm2min(17, 0)},
+    {17, hm2min(10, 0),  hm2min(17, 0)},
+    {18, hm2min(10, 0),  hm2min(17, 0)},
+    {18, hm2min(18, 30), hm2min(22, 0)},
+    {19, hm2min(17, 0),  hm2min(22, 0)},
+    {22, hm2min(10, 0),  hm2min(17, 0)},
+    {23, hm2min(10, 0),  hm2min(17, 0)},
+    {24, hm2min(10, 0),  hm2min(17, 0)},
+    {25, hm2min(10, 0),  hm2min(17, 0)},
+    {26, hm2min(17, 30), hm2min(22, 0)},
+    {29, hm2min(10, 0),  hm2min(17, 0)},
 };
 byte num_wps = sizeof(wps) / sizeof(wps[0]);
 
